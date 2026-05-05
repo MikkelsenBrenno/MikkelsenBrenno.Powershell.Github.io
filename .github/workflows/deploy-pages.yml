@@ -40,7 +40,7 @@ jobs:
         run: pnpm --filter @workspace/intune-script-builder run build
         env:
           NODE_ENV: production
-          BASE_PATH: /MikkelsenBrenno.Powershell.Github.io/
+          BASE_PATH: /PowershellTrainer/
 
       - name: Add SPA 404 fallback
         run: cp artifacts/intune-script-builder/dist/public/index.html artifacts/intune-script-builder/dist/public/404.html
