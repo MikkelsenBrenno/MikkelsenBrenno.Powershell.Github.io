@@ -1,0 +1,143 @@
+Create a modern responsive website called “Intune PowerShell Script Builder & Visualizer”.
+
+Purpose:
+The website should help IT admins, endpoint engineers, and Microsoft 365 consultants create a strong skeleton for Intune PowerShell scripts, especially:
+- Intune remediation scripts
+- Intune proactive remediation detection scripts
+- Intune proactive remediation remediation scripts
+- Configuration scripts
+- Registry checks
+- Registry changes
+- Rollback scripts
+- Logging and troubleshooting
+
+The site should not execute scripts. It should generate structured script templates, explain what each part does, and visualize how the script works when deployed through Microsoft Intune.
+
+Use React and Tailwind CSS. Make the design polished, professional, and Microsoft/Intune-inspired.
+
+Core idea:
+A user chooses a script scenario, configures options, and the website generates:
+1. Detection script skeleton
+2. Remediation script skeleton
+3. Optional rollback script skeleton
+4. Intune deployment guidance
+5. Visual execution flow
+6. Risk and safety checklist
+
+Important safety note:
+Add a visible disclaimer:
+“Generated scripts are templates only. Always test in a pilot group before production deployment. Validate registry paths, detection logic, permissions, and rollback behavior.”
+
+Main pages / sections:
+
+1. Homepage dashboard
+Show selectable scenario cards:
+- Registry value compliance check
+- Registry value creation or update
+- Remove unwanted registry value
+- Local file existence check
+- Local folder cleanup
+- Windows service status check
+- Scheduled task validation
+- BitLocker setting validation
+- OneDrive configuration check
+- Teams machine-wide installer cleanup
+- Browser policy registry check
+- Custom Intune remediation package
+
+Each card should show:
+- Scenario name
+- Use case
+- Risk level
+- Intune script type
+- Whether rollback is recommended
+
+2. Script Builder page
+Create an interactive form where the user can configure:
+- Script name
+- Description
+- Detection type
+- Registry path
+- Registry value name
+- Expected value
+- Value type: String, DWORD, QWORD, MultiString, Binary
+- Detection operator: equals, not equals, exists, does not exist, greater than, less than
+- Remediation action: create, update, delete, restart service, stop service, start service, create folder, delete file
+- Rollback option: yes/no
+- Logging option: basic, detailed, transcript
+- Exit code style: Intune proactive remediation style
+- Run context: system or user
+- PowerShell architecture: 64-bit or 32-bit
+- Dry-run mode option
+- Pilot group recommendation
+
+3. Script output tabs
+Show generated scripts in tabs:
+- Detection script
+- Remediation script
+- Rollback script
+- Intune notes
+- Testing commands
+
+Each script should be shown in a code block with a copy button.
+
+4. Detection script skeleton
+Generate a strong detection script skeleton for Intune proactive remediations.
+
+Example detection behavior:
+- Check if registry path exists
+- Check if registry value exists
+- Read current value
+- Compare current value to expected value
+- If compliant, output a clear message and exit 0
+- If non-compliant, output a clear message and exit 1
+- If error occurs, output error details and exit 1
+
+Include comments explaining:
+- Exit 0 means compliant / no remediation needed
+- Exit 1 means non-compliant / remediation should run
+- Write-Output is visible in Intune logs
+- Avoid changing anything in detection scripts
+
+Example generated detection script skeleton:
+
+```powershell
+<#
+.SYNOPSIS
+Detects whether a registry value matches the expected configuration.
+
+.DESCRIPTION
+Designed for Microsoft Intune proactive remediations.
+This detection script checks a registry value and exits:
+0 = compliant
+1 = non-compliant, remediation required
+
+.NOTES
+Test before production deployment.
+#>
+
+$RegistryPath = "HKLM:\SOFTWARE\Contoso\Settings"
+$ValueName = "Enabled"
+$ExpectedValue = 1
+
+try {
+    if (-not (Test-Path $RegistryPath)) {
+        Write-Output "Registry path not found: $RegistryPath"
+        exit 1
+    }
+
+    $CurrentValue = Get-ItemPropertyValue -Path $RegistryPath -Name $ValueName -ErrorAction Stop
+
+    if ($CurrentValue -eq $ExpectedValue) {
+        Write-Output "Compliant: $ValueName is set to $ExpectedValue"
+        exit 0
+    }
+    else {
+        Write-Output "Non-compliant: $ValueName is $CurrentValue, expected $ExpectedValue"
+        exit 1
+    }
+}
+catch {
+    Write-Output "Detection failed or value missing: $($_.Exception.Message)"
+    exit 1
+}

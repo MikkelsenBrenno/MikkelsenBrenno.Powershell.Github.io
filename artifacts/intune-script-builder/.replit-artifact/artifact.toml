@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Intune PowerShell Script Builder"
+version = "1.0.0"
+id = "artifacts/intune-script-builder"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23523
+
+[services.development]
+run = "pnpm --filter @workspace/intune-script-builder run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/intune-script-builder", "run", "build" ]
+publicDir = "artifacts/intune-script-builder/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23523"
+BASE_PATH = "/"

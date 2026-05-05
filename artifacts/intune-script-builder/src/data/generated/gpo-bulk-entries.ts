@@ -1,0 +1,1018 @@
+/**
+ * Bulk GPO entries.
+ *
+ * Compact, tuple-based reference dataset compiled from Microsoft's public
+ * policy documentation (ADMX templates, "Policies CSP" reference, MS Learn
+ * articles). Loaded dynamically via gpo-lookup.ts so it doesn't bloat the
+ * initial JS bundle.
+ *
+ * To regenerate / extend from a fresh Microsoft "Group Policy Settings
+ * Reference Spreadsheet", see scripts/src/import-gpo.ts.
+ *
+ * Tuple shape:  [valueName, valueType, expectedValue, displayName, description?]
+ */
+
+import type { GpoMapping } from "@/data/gpo-mappings";
+import { VALUE_TYPES } from "@/lib/conditions";
+
+type ValueType = (typeof VALUE_TYPES)[number];
+type Tuple = readonly [string, ValueType, string, string, string?];
+
+const slug = (s: string): string =>
+  s
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .toLowerCase()
+    .replace(/^-+|-+$/g, "");
+
+function pathHash(p: string): string {
+  let h = 0;
+  for (let i = 0; i < p.length; i++) {
+    h = (h * 31 + p.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36).padStart(4, "0").slice(0, 5);
+}
+
+interface BulkOpts {
+  category: string;
+  prefix: string;
+  path: string;
+  supportedOn?: string;
+}
+
+function bulk(opts: BulkOpts, items: readonly Tuple[]): GpoMapping[] {
+  return items.map(([vn, vt, ev, name, desc]) => ({
+    id: `${opts.prefix}-${slug(vn)}-${pathHash(opts.path)}`,
+    gpoName: `${opts.category}: ${name}`,
+    category: opts.category,
+    registryPath: opts.path,
+    valueName: vn,
+    expectedValue: ev,
+    valueType: vt,
+    description: desc ?? "",
+    supportedOn: opts.supportedOn,
+    verified: false,
+  }));
+}
+
+// =========================================================================
+// Edge — additional policies
+// =========================================================================
+const EDGE_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge";
+const edgeExtra = bulk(
+  { category: "Edge", prefix: "edge2", path: EDGE_PATH, supportedOn: "Microsoft Edge 88+" },
+  [
+    ["AdsSettingForIntrusiveAdsSites", "DWORD", "2", "Block ads on intrusive ad sites", "1 = allow ads, 2 = block ads on sites that show intrusive ads."],
+    ["AllowDeletingBrowserHistory", "DWORD", "0", "Block clearing browser history", "0 = users cannot delete browsing or download history."],
+    ["AllowFileSelectionDialogs", "DWORD", "0", "Disable file dialogs", "0 = block file pickers (used in kiosk mode)."],
+    ["AllowGamesMenu", "DWORD", "0", "Hide games menu", "0 = hide the in-browser games menu in Edge."],
+    ["AllowedDomainsForApps", "String", "contoso.com", "Restrict Google account domains", "REG_SZ. Only allow sign-in for accounts under these domains."],
+    ["ApplicationGuardContainerProxy", "String", "proxy.contoso.com:8080", "Application Guard container proxy", "REG_SZ. Override proxy for Edge running in Application Guard container."],
+    ["AudioCaptureAllowed", "DWORD", "0", "Block microphone access", "0 = deny microphone capture by default."],
+    ["AudioCaptureAllowedUrls\\1", "String", "https://teams.microsoft.com", "Allow microphone for specific URL", "REG_SZ allowlist for AudioCaptureAllowed."],
+    ["AutoImportAtFirstRun", "DWORD", "4", "Disable first-run import", "0 = import all, 1 = ask user, 4 = no import."],
+    ["AutoLaunchProtocolsFromOrigins", "String", "[]", "Auto-launch protocols", "REG_SZ JSON. Configure which protocols can launch external apps without prompting."],
+    ["AutoOpenFileTypes\\1", "String", "pdf", "Auto-open file types", "REG_SZ list of extensions opened automatically after download."],
+    ["AutoplayAllowed", "DWORD", "0", "Block media autoplay", "0 = block autoplay of media on websites."],
+    ["BlockExternalExtensions", "DWORD", "1", "Block externally hosted extensions", "1 = block extensions that are not in the Edge Add-ons store."],
+    ["BrowserNetworkTimeQueriesEnabled", "DWORD", "0", "Disable network time queries", "0 = do not contact Microsoft network time servers."],
+    ["BuiltInDnsClientEnabled", "DWORD", "0", "Disable Edge built-in DNS client", "0 = use OS DNS resolver."],
+    ["CertificateTransparencyEnforcementDisabledForUrls\\1", "String", ".internal.contoso.com", "Disable CT enforcement for URL", "REG_SZ list. Skip Certificate Transparency check for internal sites."],
+    ["ClickOnceEnabled", "DWORD", "0", "Disable ClickOnce", "0 = block ClickOnce app launches from Edge."],
+    ["ComponentUpdatesEnabled", "DWORD", "1", "Allow Edge component updates", "1 = enable auto-updates of Edge sub-components (CRLSet, etc.)."],
+    ["DefaultClipboardSetting", "DWORD", "2", "Block clipboard read for sites", "1 = sites can ask, 2 = block, 3 = allow."],
+    ["DefaultFileSystemReadGuardSetting", "DWORD", "2", "Block File System read API", "2 = block File System Access API reads."],
+    ["DefaultFileSystemWriteGuardSetting", "DWORD", "2", "Block File System write API", "2 = block File System Access API writes."],
+    ["DefaultGeolocationSetting", "DWORD", "2", "Block geolocation by default", "1 = ask, 2 = block, 3 = allow."],
+    ["DefaultNotificationsSetting", "DWORD", "2", "Block site notifications by default", "1 = ask, 2 = block, 3 = allow."],
+    ["DefaultPopupsSetting", "DWORD", "2", "Block site popups by default", "1 = ask, 2 = block, 3 = allow."],
+    ["DefaultSearchProviderEnabled", "DWORD", "1", "Force default search provider", "1 = use the configured DefaultSearchProvider settings."],
+    ["DefaultSearchProviderName", "String", "Bing", "Default search provider name", "REG_SZ display name shown to users."],
+    ["DefaultSearchProviderSearchURL", "String", "https://www.bing.com/search?q={searchTerms}", "Default search URL", "REG_SZ search URL template."],
+    ["DefaultWebUsbGuardSetting", "DWORD", "2", "Block WebUSB", "2 = block WebUSB API access."],
+    ["DnsOverHttpsTemplates", "String", "https://dns.contoso.com/dns-query{?dns}", "DoH URI template", "REG_SZ. Set provider URL when DnsOverHttpsMode != off."],
+    ["DownloadDirectory", "String", "${user_home}\\Downloads", "Download directory", "REG_SZ. Override default download folder."],
+    ["EditFavoritesEnabled", "DWORD", "1", "Allow editing favorites", "1 = users can add/remove favorites."],
+    ["EnableMediaRouter", "DWORD", "0", "Disable Cast / Media Router", "0 = disable Cast feature."],
+    ["EnableOnlineRevocationChecks", "DWORD", "1", "Enable OCSP/CRL checks", "1 = perform online certificate revocation checks."],
+    ["ExperimentationAndConfigurationServiceControl", "DWORD", "1", "Experimentation service mode", "0 = disable, 1 = config-only, 2 = full."],
+    ["FavoritesBarEnabled", "DWORD", "1", "Show favorites bar", "1 = always show favorites bar."],
+    ["ForceCertificatePromptsOnMultipleMatches", "DWORD", "1", "Prompt on multiple cert matches", "1 = always prompt user when multiple client certs match."],
+    ["ForceEphemeralProfiles", "DWORD", "1", "Force ephemeral browser profiles", "1 = profile data is wiped at sign-out (ideal for kiosks/VDI)."],
+    ["GuestModeEnabled", "DWORD", "0", "Disable guest mode", "0 = guest mode unavailable."],
+    ["HSTSPolicyBypassList\\1", "String", "intranet.contoso.com", "HSTS bypass list", "REG_SZ. Hostnames exempt from HSTS upgrades."],
+    ["IntensiveWakeUpThrottlingEnabled", "DWORD", "1", "Throttle background tabs", "1 = aggressively throttle background JavaScript timers to save power."],
+    ["LookalikeWarningAllowlistDomains\\1", "String", "intranet.contoso.com", "Lookalike warning allowlist", "REG_SZ. Skip 'lookalike URL' warnings for these domains."],
+    ["ManagedFavorites", "String", "[]", "Managed favorites JSON", "REG_SZ JSON. Inject organization favorites that users cannot remove."],
+    ["MaxConnectionsPerProxy", "DWORD", "32", "Max connections per proxy", "Number of concurrent connections (default 32, max 99)."],
+    ["NewTabPageContentEnabled", "DWORD", "0", "Disable NTP MSN feed", "0 = hide MSN content feed on new tab page."],
+    ["NewTabPageHideDefaultTopSites", "DWORD", "1", "Hide default top sites on NTP", "1 = hide promoted sites tile."],
+    ["NewTabPageLocation", "String", "https://intranet.contoso.com", "Custom NTP URL", "REG_SZ. Override new tab page with internal portal."],
+    ["PaymentMethodQueryEnabled", "DWORD", "0", "Disable payment method query", "0 = block sites from querying for stored payment methods."],
+    ["PrintHeaderFooter", "DWORD", "0", "Disable print headers/footers", "0 = no headers/footers on printed pages."],
+    ["PrintingEnabled", "DWORD", "1", "Allow printing", "0 = block printing entirely."],
+    ["PromptForDownloadLocation", "DWORD", "1", "Always prompt for download location", "1 = ask each time where to save downloads."],
+    ["QuicAllowed", "DWORD", "0", "Disable QUIC protocol", "0 = block QUIC; force HTTP/2 over TCP."],
+    ["RelaunchNotification", "DWORD", "2", "Relaunch notification mode", "1 = recurring banner, 2 = required (force restart at deadline)."],
+    ["RelaunchNotificationPeriod", "DWORD", "604800000", "Relaunch grace period (ms)", "Milliseconds before forced relaunch (default 7 days)."],
+    ["RemoteAccessHostFirewallTraversal", "DWORD", "0", "Disable remote access firewall traversal", "0 = block STUN/relay use by Edge remote access host."],
+    ["SSLErrorOverrideAllowed", "DWORD", "0", "Block SSL error override", "0 = users cannot click through SSL/TLS warnings."],
+    ["ScreenCaptureAllowed", "DWORD", "0", "Block screen capture", "0 = block getDisplayMedia (screen sharing)."],
+    ["ShowOfficialColorPicker", "DWORD", "0", "Hide custom NTP color picker", "0 = hide the new-tab page color customizer."],
+    ["SignedHTTPExchangeEnabled", "DWORD", "1", "Allow Signed HTTP Exchanges", "1 = allow SXG for AMP and similar features."],
+    ["SitePerProcessEnabled", "DWORD", "1", "Enable site isolation", "1 = process-per-site isolation enforced."],
+    ["SpellcheckEnabled", "DWORD", "0", "Disable spellcheck", "0 = disable spellchecker."],
+    ["SuppressUnsupportedOSWarning", "DWORD", "1", "Suppress unsupported OS warning", "1 = hide the 'Edge no longer supported on this OS' banner."],
+    ["TLSCipherSuiteDenylist\\1", "String", "0x002F", "TLS cipher suite denylist", "REG_SZ list. Block specific cipher suite IDs."],
+    ["TabFreezingEnabled", "DWORD", "1", "Allow tab freezing", "1 = freeze background tabs to reduce CPU."],
+    ["UrlAllowlist\\1", "String", "intranet.contoso.com", "URL allowlist override", "REG_SZ. Sites that bypass UrlBlocklist."],
+    ["UserAgentClientHintsEnabled", "DWORD", "1", "Enable User-Agent Client Hints", "1 = expose modern UA-CH headers (replaces UA string)."],
+    ["VideoCaptureAllowed", "DWORD", "0", "Block camera access", "0 = block camera by default; use VideoCaptureAllowedUrls for exceptions."],
+    ["WPADQuickCheckEnabled", "DWORD", "0", "Disable WPAD quick-check", "0 = disable proxy auto-discovery shortcut (security hardening)."],
+    ["WebRtcEventLogCollectionAllowed", "DWORD", "0", "Block WebRTC event log upload", "0 = do not upload WebRTC event logs to Google."],
+    ["WebRtcUdpPortRange", "String", "10000-20000", "WebRTC UDP port range", "REG_SZ format 'min-max'. Constrain WebRTC UDP ports for firewalls."],
+    ["WindowOcclusionEnabled", "DWORD", "1", "Window occlusion optimization", "1 = throttle hidden/covered Edge windows."],
+  ],
+);
+
+// =========================================================================
+// Chrome — additional policies
+// =========================================================================
+const CHROME_PATH = "HKLM:\\SOFTWARE\\Policies\\Google\\Chrome";
+const chromeExtra = bulk(
+  { category: "Chrome", prefix: "chr2", path: CHROME_PATH, supportedOn: "Google Chrome 90+" },
+  [
+    ["AbusiveExperienceInterventionEnforce", "DWORD", "1", "Enforce abusive experience intervention", "1 = block popups from sites with abusive ad experiences."],
+    ["AllowDeletingBrowserHistory", "DWORD", "0", "Block clearing history", "0 = users cannot delete browsing history."],
+    ["AllowDinosaurEasterEgg", "DWORD", "0", "Disable offline dinosaur game", "0 = hide T-Rex offline easter egg."],
+    ["AlternateErrorPagesEnabled", "DWORD", "0", "Disable alternate error pages", "0 = no DNS suggestions on connection errors."],
+    ["AlwaysOpenPdfExternally", "DWORD", "1", "Open PDFs externally", "1 = use system default PDF viewer."],
+    ["AmbientAuthenticationInPrivateModesEnabled", "DWORD", "0", "Block ambient auth in private", "0 = no auto NTLM/Kerberos in incognito."],
+    ["AppCacheForceEnabled", "DWORD", "0", "Disable AppCache", "0 = AppCache fully disabled (deprecated API)."],
+    ["AudioCaptureAllowed", "DWORD", "0", "Block microphone", "0 = deny mic by default."],
+    ["AudioProcessHighPriorityEnabled", "DWORD", "0", "Audio process priority", "0 = use normal priority for audio."],
+    ["AudioSandboxEnabled", "DWORD", "1", "Sandbox audio process", "1 = enable audio sandbox (security)."],
+    ["AutoplayAllowed", "DWORD", "0", "Block media autoplay", "0 = block autoplay site-wide."],
+    ["BookmarkBarEnabled", "DWORD", "1", "Show bookmark bar", "1 = always show bookmark bar."],
+    ["BrowserAddPersonEnabled", "DWORD", "0", "Disable adding profiles", "0 = users cannot add Chrome profiles."],
+    ["BrowserGuestModeEnabled", "DWORD", "0", "Disable guest mode", "0 = block guest browsing."],
+    ["BrowserGuestModeEnforced", "DWORD", "0", "Force guest mode", "1 = always launch in guest mode (kiosk)."],
+    ["BrowserSwitcherEnabled", "DWORD", "1", "Enable Legacy Browser Support", "1 = redirect specific URLs to IE/another browser via LBS."],
+    ["BuiltInDnsClientEnabled", "DWORD", "0", "Disable built-in DNS", "0 = use OS DNS resolver only."],
+    ["CertificateTransparencyEnforcementDisabledForCas\\1", "String", "<base64-spki-hash>", "Disable CT enforcement for CA", "REG_SZ. SHA-256 SPKI hashes of CAs to skip CT for."],
+    ["ChromeCleanupEnabled", "DWORD", "0", "Disable Chrome Cleanup tool", "0 = disable scheduled cleanup of unwanted software."],
+    ["ChromeCleanupReportingEnabled", "DWORD", "0", "Disable cleanup reporting", "0 = don't upload Chrome Cleanup metadata."],
+    ["ClickToCallEnabled", "DWORD", "0", "Disable Click-to-Call", "0 = disable phone-number click-to-call to Android."],
+    ["CloudPolicyOverridesPlatformPolicy", "DWORD", "0", "Cloud over GPO precedence", "0 = GPO wins; 1 = Chrome cloud policy wins."],
+    ["CloudPrintProxyEnabled", "DWORD", "0", "Disable Cloud Print proxy", "0 = disable (Cloud Print is deprecated)."],
+    ["CloudReportingEnabled", "DWORD", "0", "Disable cloud reporting", "0 = don't upload status reports to admin console."],
+    ["CommandLineFlagSecurityWarningsEnabled", "DWORD", "1", "Show flag warnings", "1 = show 'unsupported flags' security warnings on launch."],
+    ["ComponentUpdatesEnabled", "DWORD", "1", "Allow component updates", "1 = update Chrome sub-components automatically."],
+    ["DefaultBrowserSettingEnabled", "DWORD", "1", "Allow default browser prompt", "1 = Chrome may prompt to be default."],
+    ["DefaultClipboardSetting", "DWORD", "2", "Block clipboard read", "2 = block site reads of clipboard."],
+    ["DefaultFileSystemReadGuardSetting", "DWORD", "2", "Block File System read", "2 = block File System Access API reads."],
+    ["DefaultFileSystemWriteGuardSetting", "DWORD", "2", "Block File System write", "2 = block File System Access API writes."],
+    ["DefaultGeolocationSetting", "DWORD", "2", "Block geolocation", "2 = block geolocation requests."],
+    ["DefaultJavaScriptJitSetting", "DWORD", "2", "Disable JS JIT", "2 = block JIT (security hardening at perf cost)."],
+    ["DefaultNotificationsSetting", "DWORD", "2", "Block notifications", "2 = block site notifications."],
+    ["DefaultPopupsSetting", "DWORD", "2", "Block popups", "2 = block popup windows."],
+    ["DefaultPrintColor", "DWORD", "1", "Default print color mode", "1 = color, 0 = monochrome."],
+    ["DefaultSearchProviderEnabled", "DWORD", "1", "Force default search provider", "1 = use configured DSP settings."],
+    ["DefaultSearchProviderName", "String", "Google", "Default search provider name", "REG_SZ name shown in omnibox."],
+    ["DefaultSearchProviderSearchURL", "String", "https://www.google.com/search?q={searchTerms}", "Default search URL", "REG_SZ search URL template."],
+    ["DefaultSensorsSetting", "DWORD", "2", "Block sensors", "2 = block motion/orientation sensor APIs."],
+    ["DefaultSerialGuardSetting", "DWORD", "2", "Block Web Serial", "2 = block Web Serial API."],
+    ["DefaultWebBluetoothGuardSetting", "DWORD", "2", "Block Web Bluetooth", "2 = block Web Bluetooth API."],
+    ["DefaultWebUsbGuardSetting", "DWORD", "2", "Block WebUSB", "2 = block WebUSB API."],
+    ["DeveloperToolsAvailability", "DWORD", "2", "Disable DevTools", "2 = disable, 1 = allow except force-installed extensions, 0 = allow."],
+    ["DeviceMetricsReportingEnabled", "DWORD", "0", "Disable device metrics reporting", "0 = no device telemetry to Google."],
+    ["DiskCacheDir", "String", "${user_home}\\AppData\\Local\\Google\\Chrome\\Cache", "Disk cache directory", "REG_SZ override for cache location."],
+    ["DiskCacheSize", "DWORD", "104857600", "Disk cache size (bytes)", "Cache size in bytes (default ~80MB; set 0 = browser default)."],
+    ["DnsOverHttpsMode", "String", "automatic", "DoH mode", "REG_SZ: off | automatic | secure."],
+    ["DnsOverHttpsTemplates", "String", "https://dns.google/dns-query{?dns}", "DoH provider URL", "REG_SZ. DoH endpoint when mode != off."],
+    ["DownloadRestrictions", "DWORD", "1", "Block dangerous downloads", "0 = none, 1 = block dangerous, 2 = block PUA, 3 = block all."],
+    ["EnableMediaRouter", "DWORD", "0", "Disable Cast", "0 = disable media router/Cast."],
+    ["EnableOnlineRevocationChecks", "DWORD", "1", "Enable OCSP", "1 = enable online certificate revocation checks."],
+    ["ExtensionInstallBlocklist\\1", "String", "*", "Block all extensions", "Use '*' to block all, then ExtensionInstallAllowlist for exceptions."],
+    ["ExtensionInstallForcelist\\1", "String", "<extension-id>;https://clients2.google.com/service/update2/crx", "Force install extension", "REG_SZ format 'id;updateurl'."],
+    ["ForceEphemeralProfiles", "DWORD", "1", "Ephemeral profiles", "1 = wipe profile on sign-out (kiosk/VDI)."],
+    ["HardwareAccelerationModeEnabled", "DWORD", "0", "Disable hardware acceleration", "0 = disable GPU acceleration."],
+    ["IncognitoModeAvailability", "DWORD", "1", "Disable incognito mode", "1 = incognito disabled, 0 = available, 2 = forced."],
+    ["NTPCustomBackgroundEnabled", "DWORD", "0", "Disable NTP custom background", "0 = users cannot customize NTP background."],
+    ["NetworkPredictionOptions", "DWORD", "2", "Disable network prediction", "0 = always predict, 1 = WiFi only, 2 = no prediction."],
+    ["PasswordLeakDetectionEnabled", "DWORD", "1", "Password leak detection", "1 = enable check against breached password database."],
+    ["PasswordManagerEnabled", "DWORD", "0", "Disable Chrome password manager", "0 = disable built-in password manager."],
+    ["PaymentMethodQueryEnabled", "DWORD", "0", "Block payment method query", "0 = block sites from querying stored payment methods."],
+    ["PolicyAtomicGroup", "DWORD", "1", "Atomic policy groups", "1 = related policies applied atomically."],
+    ["PrintHeaderFooter", "DWORD", "0", "Disable print headers/footers", "0 = no headers/footers."],
+    ["PrintPdfAsImageDefault", "DWORD", "0", "Print PDFs as image by default", "0 = print as text/vectors."],
+    ["PrintingEnabled", "DWORD", "1", "Allow printing", "0 = block printing entirely."],
+    ["PromotionalTabsEnabled", "DWORD", "0", "Disable promotional tabs", "0 = no promotional content tabs (welcome, what's new)."],
+    ["QuicAllowed", "DWORD", "0", "Disable QUIC", "0 = block QUIC."],
+    ["RelaunchNotification", "DWORD", "2", "Relaunch notification mode", "2 = required relaunch within deadline."],
+    ["RelaunchNotificationPeriod", "DWORD", "604800000", "Relaunch period (ms)", "Default 7 days. Time before forced relaunch."],
+    ["RemoteAccessHostAllowRemoteAccessConnections", "DWORD", "0", "Block Chrome Remote Desktop host", "0 = disable Chrome Remote Access host."],
+    ["SafeBrowsingForTrustedSourcesEnabled", "DWORD", "1", "Safe Browsing for trusted sources", "1 = scan even files from trusted sources."],
+    ["SafeBrowsingProtectionLevel", "DWORD", "1", "Safe Browsing level", "0 = off, 1 = standard, 2 = enhanced."],
+    ["SavingBrowserHistoryDisabled", "DWORD", "0", "Disable saving history", "1 = do not save browsing history (also disables sync)."],
+    ["ScreenCaptureAllowed", "DWORD", "0", "Block screen capture", "0 = block getDisplayMedia (screen-share)."],
+    ["SearchSuggestEnabled", "DWORD", "0", "Disable search suggestions", "0 = no search suggestions sent to provider."],
+    ["SecondaryGoogleAccountSigninAllowed", "DWORD", "0", "Block secondary Google sign-in", "0 = users cannot add additional Google accounts in profile."],
+    ["SharedClipboardEnabled", "DWORD", "0", "Disable shared clipboard", "0 = disable cross-device clipboard with Android."],
+    ["ShowFullUrlsInAddressBar", "DWORD", "1", "Show full URLs in address bar", "1 = always show full URL (not just domain)."],
+    ["SignedHTTPExchangeEnabled", "DWORD", "1", "Allow Signed HTTP Exchanges", "1 = allow SXG."],
+    ["SitePerProcess", "DWORD", "1", "Enable site isolation", "1 = process-per-site mandatory."],
+    ["SpellCheckServiceEnabled", "DWORD", "0", "Disable enhanced spell check", "0 = no remote spell check (data sent to Google)."],
+    ["SpellcheckEnabled", "DWORD", "0", "Disable spellchecker", "0 = disable spellcheck entirely."],
+    ["SyncDisabled", "DWORD", "1", "Disable Chrome Sync", "1 = disable sync."],
+    ["TaskManagerEndProcessEnabled", "DWORD", "0", "Disable task manager end-process", "0 = users cannot end Chrome processes from Task Manager."],
+    ["ThirdPartyBlockingEnabled", "DWORD", "1", "Block third-party module injections", "1 = block 3rd-party DLL injections (security)."],
+    ["TranslateEnabled", "DWORD", "0", "Disable translate", "0 = no translation prompts."],
+    ["UrlKeyedAnonymizedDataCollectionEnabled", "DWORD", "0", "Disable URL-keyed data collection", "0 = stop sending visited URLs to Google for site preview."],
+    ["WPADQuickCheckEnabled", "DWORD", "0", "Disable WPAD quick-check", "0 = disable proxy auto-discovery shortcut."],
+    ["WebRtcEventLogCollectionAllowed", "DWORD", "0", "Block WebRTC event log collection", "0 = do not upload WebRTC event logs."],
+    ["WebRtcUdpPortRange", "String", "10000-20000", "WebRTC UDP port range", "REG_SZ 'min-max'. Constrain WebRTC UDP ports."],
+  ],
+);
+
+// =========================================================================
+// Defender — additional ASR and exclusion policies
+// =========================================================================
+const DEF_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender";
+const DEF_SCAN_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan";
+const DEF_RT_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-Time Protection";
+const DEF_SPYNET_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet";
+const DEF_NIS_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\NIS";
+const DEF_ASR_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\ASR\\Rules";
+const DEF_NETPROT_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\Network Protection";
+const DEF_CFA_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\Controlled Folder Access";
+
+const defenderCore = bulk(
+  { category: "Defender", prefix: "def2", path: DEF_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["DisableAntiSpyware", "DWORD", "0", "Allow Defender Antivirus", "0 = keep Defender enabled (1 disables it - not recommended on Win10 1909+)."],
+    ["DisableRoutinelyTakingAction", "DWORD", "0", "Auto-take action on threats", "0 = allow automatic remediation of detected threats."],
+    ["PUAProtection", "DWORD", "1", "Block potentially unwanted apps", "1 = block PUA (recommended). 0 = off, 2 = audit."],
+    ["AllowFastServiceStartup", "DWORD", "1", "Fast Defender service startup", "1 = enable fast startup of Defender service."],
+    ["RandomizeScheduleTaskTimes", "DWORD", "1", "Randomize scheduled scan times", "1 = stagger scan start times +/- 30 min."],
+    ["ServiceKeepAlive", "DWORD", "0", "Don't keep service alive", "0 = let service stop when idle."],
+  ],
+);
+
+const defenderScan = bulk(
+  { category: "Defender", prefix: "def-scan", path: DEF_SCAN_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["AllowEmailScanning", "DWORD", "0", "Email scanning", "0 = no email scanning (scan engine handles writes/reads anyway)."],
+    ["DisableArchiveScanning", "DWORD", "0", "Scan archive files", "0 = scan zip/cab/rar contents."],
+    ["DisableHeuristics", "DWORD", "0", "Heuristic scanning", "0 = enable heuristic engine."],
+    ["DisablePackedExeScanning", "DWORD", "0", "Scan packed executables", "0 = scan packed/obfuscated EXEs."],
+    ["DisableRemovableDriveScanning", "DWORD", "0", "Scan removable drives", "0 = include USB drives in scans."],
+    ["DisableScanningMappedNetworkDrivesForFullScan", "DWORD", "1", "Skip mapped drives in full scan", "1 = skip mapped network drives during full scan (perf)."],
+    ["DisableScanningNetworkFiles", "DWORD", "0", "Scan network files", "0 = scan files accessed over network shares."],
+    ["LowCpuPriority", "DWORD", "1", "Low CPU priority for scans", "1 = use low CPU priority during scans."],
+    ["AvgCPULoadFactor", "DWORD", "50", "Max CPU load during scan (%)", "Percent CPU usage cap during scans (default 50)."],
+    ["ScheduleDay", "DWORD", "0", "Scheduled scan day", "0 = every day, 1-7 = Sun-Sat, 8 = no scheduled scan."],
+    ["ScheduleQuickScanTime", "DWORD", "120", "Quick scan time (minutes after midnight)", "Minutes after midnight for daily quick scan."],
+    ["ScheduleScanTime", "DWORD", "120", "Scheduled scan time (minutes after midnight)", "Minutes after midnight for full scan."],
+    ["ScanOnlyIfIdleEnabled", "DWORD", "1", "Scan only when idle", "1 = run scheduled scans only when computer is idle."],
+    ["DisableCatchupQuickScan", "DWORD", "0", "Run missed quick scans", "0 = catch up on missed quick scans."],
+    ["DisableCatchupFullScan", "DWORD", "0", "Run missed full scans", "0 = catch up on missed full scans."],
+  ],
+);
+
+const defenderRT = bulk(
+  { category: "Defender", prefix: "def-rt", path: DEF_RT_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["DisableRealtimeMonitoring", "DWORD", "0", "Real-time protection", "0 = enabled (1 disables it - not recommended)."],
+    ["DisableBehaviorMonitoring", "DWORD", "0", "Behavior monitoring", "0 = enable behavior-based detection."],
+    ["DisableIOAVProtection", "DWORD", "0", "Scan downloads", "0 = scan all downloaded files and attachments."],
+    ["DisableOnAccessProtection", "DWORD", "0", "On-access protection", "0 = enable file-system on-access protection."],
+    ["DisableScanOnRealtimeEnable", "DWORD", "0", "Scan when RT enabled", "0 = run a scan when real-time protection is re-enabled."],
+    ["DisableScriptScanning", "DWORD", "0", "Script scanning", "0 = scan PowerShell/JS/VBS via AMSI."],
+    ["DisableRawWriteNotification", "DWORD", "0", "Raw write notifications", "0 = receive notifications for raw disk writes."],
+    ["RealtimeScanDirection", "DWORD", "0", "Real-time scan direction", "0 = both reads & writes, 1 = incoming only, 2 = outgoing only."],
+  ],
+);
+
+const defenderCloud = bulk(
+  { category: "Defender", prefix: "def-cloud", path: DEF_SPYNET_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["SpynetReporting", "DWORD", "2", "MAPS membership level", "0 = off, 1 = Basic, 2 = Advanced (recommended for cloud-delivered protection)."],
+    ["SubmitSamplesConsent", "DWORD", "1", "Sample submission consent", "0 = always prompt, 1 = send safe samples (default), 2 = never send, 3 = send all samples."],
+    ["LocalSettingOverrideSpynetReporting", "DWORD", "0", "Block local override (Spynet)", "0 = users cannot override the policy locally."],
+    ["DisableBlockAtFirstSeen", "DWORD", "0", "Block at first sight", "0 = enable Block-At-First-Sight (cloud lookup before file runs)."],
+  ],
+);
+
+const defenderNIS = bulk(
+  { category: "Defender", prefix: "def-nis", path: DEF_NIS_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["DisableProtocolRecognition", "DWORD", "0", "Network inspection (NIS)", "0 = enable network protocol recognition."],
+  ],
+);
+
+// ASR rule GUIDs are stored as REG_SZ values where the value name is the rule
+// GUID and the value data is "1" (block) / "2" (audit) / "0" (off).
+const defenderASR = bulk(
+  { category: "Defender ASR", prefix: "asr", path: DEF_ASR_PATH, supportedOn: "Windows 10 1709+ / 11" },
+  [
+    ["BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550", "String", "1", "ASR: Block executable from email", "Block executable content from email client and webmail."],
+    ["D4F940AB-401B-4EFC-AADC-AD5F3C50688A", "String", "1", "ASR: Block child processes from Office", "Block all Office applications from creating child processes."],
+    ["3B576869-A4EC-4529-8536-B80A7769E899", "String", "1", "ASR: Block Office from creating executable content", "Block Office applications from creating executable content."],
+    ["75668C1F-73B5-4CF0-BB93-3ECF5CB7CC84", "String", "1", "ASR: Block Office injection into other process", "Block Office applications from injecting code into other processes."],
+    ["D3E037E1-3EB8-44C8-A917-57927947596D", "String", "1", "ASR: Block JS/VBScript launching downloaded content", "Block JavaScript/VBScript from launching downloaded executable content."],
+    ["5BEB7EFE-FD9A-4556-801D-275E5FFC04CC", "String", "1", "ASR: Block obfuscated scripts", "Block execution of potentially obfuscated scripts."],
+    ["92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B", "String", "1", "ASR: Block Win32 imports from macros", "Block Win32 API calls from Office macros."],
+    ["01443614-CD74-433A-B99E-2ECDC07BFC25", "String", "1", "ASR: Block executables not meeting prevalence/age", "Block executable files not meeting prevalence, age, or trusted-list criteria."],
+    ["C1DB55AB-C21A-4637-BB3F-A12568109D35", "String", "1", "ASR: Use advanced ransomware protection", "Use advanced ransomware protection."],
+    ["9E6C4E1F-7D60-472F-BA1A-A39EF669E4B2", "String", "1", "ASR: Block credential stealing from LSASS", "Block credential stealing from the Windows local security authority subsystem (lsass.exe)."],
+    ["D1E49AAC-8F56-4280-B9BA-993A6D77406C", "String", "1", "ASR: Block process creations from PsExec/WMI", "Block process creations originating from PSExec and WMI commands."],
+    ["B2B3F03D-6A65-4F7B-A9C7-1C7EF74A9BA4", "String", "1", "ASR: Block untrusted/unsigned USB processes", "Block untrusted and unsigned processes that run from USB."],
+    ["26190899-1602-49E8-8B27-EB1D0A1CE869", "String", "1", "ASR: Block Office communication child processes", "Block Office communication apps (Outlook) from creating child processes."],
+    ["7674BA52-37EB-4A4F-A9A1-F0F9A1619A2C", "String", "1", "ASR: Block Adobe Reader child processes", "Block Adobe Reader from creating child processes."],
+    ["E6DB77E5-3DF2-4CF1-B95A-636979351E5B", "String", "1", "ASR: Block persistence through WMI subscription", "Block persistence through WMI event subscription."],
+    ["56A863A9-875E-4185-98A7-B882C64B5CE5", "String", "1", "ASR: Block exploited vulnerable signed drivers", "Block abuse of exploited vulnerable signed drivers."],
+    ["A8F5898E-1DC8-49A9-9878-85004B8A61E6", "String", "1", "ASR: Block Webshell creation for servers", "Block Webshell creation on Exchange/IIS servers."],
+  ],
+);
+
+const defenderNetProt = bulk(
+  { category: "Defender", prefix: "def-netprot", path: DEF_NETPROT_PATH, supportedOn: "Windows 10 1709+ / 11" },
+  [
+    ["EnableNetworkProtection", "DWORD", "1", "Enable Network Protection", "0 = off, 1 = block, 2 = audit. Blocks outbound to malicious IPs/URLs."],
+  ],
+);
+
+const defenderCFA = bulk(
+  { category: "Defender", prefix: "def-cfa", path: DEF_CFA_PATH, supportedOn: "Windows 10 1709+ / 11" },
+  [
+    ["EnableControlledFolderAccess", "DWORD", "1", "Enable Controlled Folder Access", "0 = off, 1 = block, 2 = audit, 3 = block disk modification only, 4 = audit disk modification only."],
+  ],
+);
+
+// =========================================================================
+// Office 365 Apps — common per-app policies
+// =========================================================================
+const officeMacroDefs: Array<[string, string, string]> = [
+  ["Word", "word", "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Word\\Security"],
+  ["Excel", "excel", "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Excel\\Security"],
+  ["PowerPoint", "powerpoint", "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\PowerPoint\\Security"],
+  ["Outlook", "outlook", "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Outlook\\Security"],
+  ["Access", "access", "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Access\\Security"],
+  ["Visio", "visio", "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Visio\\Security"],
+  ["Publisher", "publisher", "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Publisher\\Security"],
+];
+const officeMacro: GpoMapping[] = officeMacroDefs.flatMap(([app, prefix, path]) =>
+  bulk(
+    { category: "Office", prefix: `off-${prefix}`, path, supportedOn: "Microsoft 365 Apps / Office 2016+" },
+    [
+      ["VBAWarnings", "DWORD", "4", `${app}: VBA macro warnings`, "1 = no warning (allow), 2 = warn (default), 3 = warn for unsigned, 4 = block all macros."],
+      ["BlockContentExecutionFromInternet", "DWORD", "1", `${app}: Block macros from internet`, "1 = block macros in files from internet (recommended). Requires Office 365 Apps."],
+      ["DisableAllActiveX", "DWORD", "1", `${app}: Disable all ActiveX`, "1 = disable all ActiveX controls in this Office app."],
+      ["DontTrustInstalledFiles", "DWORD", "1", `${app}: Don't trust installed templates`, "1 = treat installed templates and add-ins like internet documents."],
+      ["VBADigitalSignaturesShouldBeFromTrustedRoot", "DWORD", "1", `${app}: Require trusted root for VBA signatures`, "1 = only accept VBA signatures rooted in trusted certs."],
+    ],
+  ),
+);
+
+const officeOutlookExtra = bulk(
+  {
+    category: "Office",
+    prefix: "off-out",
+    path: "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Outlook\\Security",
+    supportedOn: "Microsoft 365 Apps / Office 2016+",
+  },
+  [
+    ["Level1Add", "String", "", "Outlook: Level1 file extensions", "REG_SZ semicolon-list of additional Level 1 (always blocked) attachment extensions."],
+    ["Level1Remove", "String", "", "Outlook: Remove from Level1 list", "REG_SZ semicolon-list of extensions to remove from Level 1 block list."],
+    ["LevelDeny", "DWORD", "1", "Outlook: Block dangerous attachments", "1 = block Level 1 attachment extensions entirely."],
+    ["AdminSecurityMode", "DWORD", "3", "Outlook: Admin security policy source", "3 = use group policy security settings."],
+    ["JunkMailProtection", "DWORD", "3", "Outlook: Junk email protection level", "0 = no auto filter, 1 = low, 2 = high, 3 = trusted lists only."],
+    ["ReadAsPlain", "DWORD", "1", "Outlook: Read all email as plain text", "1 = render all messages as plain text (mitigates HTML/JS exploits)."],
+    ["DisableSafeMailboxCheck", "DWORD", "1", "Outlook: Disable Safe Recipients popup", "1 = disable popup when sending to non-safe recipients."],
+    ["EnableAddInExceptions", "DWORD", "1", "Outlook: Allow approved add-ins despite ASR", "1 = allow specific add-ins to bypass ASR child-process rule."],
+  ],
+);
+
+const officeCommonExtra = bulk(
+  {
+    category: "Office",
+    prefix: "off-cmn",
+    path: "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Common",
+    supportedOn: "Microsoft 365 Apps / Office 2016+",
+  },
+  [
+    ["QMEnable", "DWORD", "0", "Office: Disable Customer Experience Improvement Program", "0 = opt out of CEIP."],
+    ["UpdateReliabilityData", "DWORD", "0", "Office: Disable telemetry agent", "0 = stop sending Office reliability data to Microsoft."],
+    ["SendCustomerData", "DWORD", "0", "Office: Disable send-customer-data", "0 = block sending customer data."],
+    ["UserName", "String", "", "Office: Pre-set user display name", "REG_SZ. Pre-populate Office user display name (use Intune variable)."],
+    ["UserInitials", "String", "", "Office: Pre-set user initials", "REG_SZ. Pre-populate Office user initials."],
+    ["disableOptinWizard", "DWORD", "1", "Office: Disable opt-in wizard", "1 = skip Customer Experience opt-in prompt at first launch."],
+  ],
+);
+
+const officeCommonHKLM = bulk(
+  {
+    category: "Office",
+    prefix: "off-cmn-m",
+    path: "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Common\\ClientTelemetry",
+    supportedOn: "Microsoft 365 Apps",
+  },
+  [
+    ["DisableTelemetry", "DWORD", "1", "Office: Disable client telemetry", "1 = disable Office client-side telemetry collection."],
+    ["SendTelemetry", "DWORD", "3", "Office: Telemetry level", "1 = basic, 2 = enhanced, 3 = required, 4 = optional. Use 3 for managed."],
+  ],
+);
+
+// =========================================================================
+// Windows Update for Business — additional policies
+// =========================================================================
+const WU_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate";
+const WU_AU_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU";
+
+const wuExtra = bulk(
+  { category: "Windows Update", prefix: "wu2", path: WU_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["BranchReadinessLevel", "DWORD", "16", "Feature update channel", "16 = General Availability Channel (default)."],
+    ["DeferFeatureUpdates", "DWORD", "1", "Defer feature updates", "1 = use DeferFeatureUpdatesPeriodInDays."],
+    ["DeferFeatureUpdatesPeriodInDays", "DWORD", "30", "Feature update deferral days", "0-365 days to defer feature updates after release."],
+    ["DeferQualityUpdates", "DWORD", "1", "Defer quality updates", "1 = use DeferQualityUpdatesPeriodInDays."],
+    ["DeferQualityUpdatesPeriodInDays", "DWORD", "0", "Quality update deferral days", "0-30 days to defer quality (security) updates."],
+    ["PauseFeatureUpdatesStartTime", "String", "", "Pause feature updates start time", "REG_SZ ISO date. Pauses feature updates for 35 days from this date."],
+    ["PauseQualityUpdatesStartTime", "String", "", "Pause quality updates start time", "REG_SZ ISO date. Pauses quality updates for 35 days from this date."],
+    ["ManagePreviewBuilds", "DWORD", "1", "Allow Insider Preview builds", "1 = allow, 2 = disable; controls Windows Insider Program."],
+    ["ManagePreviewBuildsPolicyValue", "DWORD", "0", "Insider build channel", "0 = disabled, 2 = Dev, 4 = Beta, 8 = Release Preview."],
+    ["DODownloadMode", "DWORD", "1", "Delivery Optimization mode", "0 = HTTP only, 1 = LAN peers, 2 = group, 3 = internet, 99 = simple, 100 = bypass."],
+    ["TargetReleaseVersion", "DWORD", "1", "Target a specific Windows version", "1 = use TargetReleaseVersionInfo to pin a feature update version."],
+    ["TargetReleaseVersionInfo", "String", "23H2", "Target version info", "REG_SZ Windows version e.g. '22H2', '23H2'."],
+    ["ProductVersion", "String", "Windows 11", "Target product version", "REG_SZ. Set to 'Windows 11' to allow upgrade to Win11."],
+  ],
+);
+
+const wuAuExtra = bulk(
+  { category: "Windows Update", prefix: "wu-au2", path: WU_AU_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["AUOptions", "DWORD", "4", "Auto-update behavior", "2 = notify before download, 3 = auto download + notify install, 4 = auto download + scheduled install, 5 = let user choose."],
+    ["AutomaticMaintenanceEnabled", "DWORD", "1", "Automatic maintenance", "1 = let Automatic Maintenance install updates."],
+    ["NoAutoRebootWithLoggedOnUsers", "DWORD", "1", "No auto-reboot with users logged on", "1 = don't auto-reboot if a user is logged on."],
+    ["ScheduledInstallDay", "DWORD", "0", "Scheduled install day", "0 = every day, 1-7 = Sun-Sat."],
+    ["ScheduledInstallTime", "DWORD", "3", "Scheduled install hour", "0-23 hour to install updates."],
+    ["AlwaysAutoRebootAtScheduledTime", "DWORD", "0", "Don't always auto-reboot", "0 = respect user activity before reboot."],
+    ["RebootRelaunchTimeoutEnabled", "DWORD", "1", "Reboot relaunch timeout enabled", "1 = use RebootRelaunchTimeout."],
+    ["RebootRelaunchTimeout", "DWORD", "10", "Reboot relaunch timeout (minutes)", "Minutes before re-prompting after declined reboot."],
+    ["ActiveHoursStart", "DWORD", "8", "Active hours start", "0-23. Hour active hours begin (no auto-reboot during)."],
+    ["ActiveHoursEnd", "DWORD", "18", "Active hours end", "0-23. Hour active hours end."],
+    ["UseUpdateClassPolicySource", "DWORD", "1", "Use update class policy source", "1 = use the configured update source for each class."],
+  ],
+);
+
+// =========================================================================
+// Windows TLS / Schannel
+// =========================================================================
+const TLS_BASE = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols";
+const tlsProtocols = ["SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1"].flatMap((proto) =>
+  bulk(
+    {
+      category: "TLS",
+      prefix: `tls-${slug(proto)}`,
+      path: `${TLS_BASE}\\${proto}\\Server`,
+      supportedOn: "Windows 7+ / Server 2008 R2+",
+    },
+    [
+      ["Enabled", "DWORD", "0", `Disable ${proto} server`, `0 = ${proto} server protocol disabled.`],
+      ["DisabledByDefault", "DWORD", "1", `${proto} disabled by default (server)`, `1 = ${proto} not enabled unless explicitly requested.`],
+    ],
+  ).concat(
+    bulk(
+      {
+        category: "TLS",
+        prefix: `tls-${slug(proto)}-c`,
+        path: `${TLS_BASE}\\${proto}\\Client`,
+        supportedOn: "Windows 7+",
+      },
+      [
+        ["Enabled", "DWORD", "0", `Disable ${proto} client`, `0 = ${proto} client protocol disabled.`],
+        ["DisabledByDefault", "DWORD", "1", `${proto} disabled by default (client)`, `1 = client will not negotiate ${proto}.`],
+      ],
+    ),
+  ),
+);
+const tls12Enable = bulk(
+  {
+    category: "TLS",
+    prefix: "tls-12-s",
+    path: `${TLS_BASE}\\TLS 1.2\\Server`,
+    supportedOn: "Windows 7+ / Server 2008 R2+",
+  },
+  [
+    ["Enabled", "DWORD", "1", "Enable TLS 1.2 server", "1 = TLS 1.2 server protocol enabled."],
+    ["DisabledByDefault", "DWORD", "0", "TLS 1.2 enabled by default (server)", "0 = TLS 1.2 negotiated when supported."],
+  ],
+).concat(
+  bulk(
+    {
+      category: "TLS",
+      prefix: "tls-12-c",
+      path: `${TLS_BASE}\\TLS 1.2\\Client`,
+      supportedOn: "Windows 7+",
+    },
+    [
+      ["Enabled", "DWORD", "1", "Enable TLS 1.2 client", "1 = TLS 1.2 client protocol enabled."],
+      ["DisabledByDefault", "DWORD", "0", "TLS 1.2 enabled by default (client)", "0 = client may negotiate TLS 1.2."],
+    ],
+  ),
+);
+
+// =========================================================================
+// Windows: UAC, LSA, Credential Guard, NTLM
+// =========================================================================
+const UAC_PATH = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System";
+const uacEntries = bulk(
+  { category: "UAC", prefix: "uac", path: UAC_PATH, supportedOn: "Windows 7+" },
+  [
+    ["EnableLUA", "DWORD", "1", "Enable User Account Control", "1 = UAC enabled (REQUIRED — disabling breaks modern apps)."],
+    ["ConsentPromptBehaviorAdmin", "DWORD", "2", "Admin elevation prompt", "0 = elevate without prompt, 1 = prompt for creds (secure desktop), 2 = prompt for consent (secure desktop), 3-5 = various."],
+    ["ConsentPromptBehaviorUser", "DWORD", "0", "Standard user elevation prompt", "0 = automatically deny, 1 = prompt for creds (secure desktop), 3 = prompt for creds."],
+    ["EnableInstallerDetection", "DWORD", "1", "Detect installer elevation", "1 = automatically detect installer applications and prompt for elevation."],
+    ["EnableSecureUIAPaths", "DWORD", "1", "Only elevate UIAccess from secure paths", "1 = require UIAccess apps to be in Program Files or Windows."],
+    ["EnableUIADesktopToggle", "DWORD", "0", "Block UIAccess apps from secure desktop toggle", "0 = UIAccess apps cannot disable secure desktop."],
+    ["EnableVirtualization", "DWORD", "1", "Virtualize file/registry write failures", "1 = virtualize legacy app writes to per-user locations."],
+    ["FilterAdministratorToken", "DWORD", "1", "Admin Approval Mode for built-in Admin", "1 = built-in Administrator runs in Admin Approval Mode."],
+    ["PromptOnSecureDesktop", "DWORD", "1", "Prompt on secure desktop", "1 = elevation prompt appears on secure desktop (recommended)."],
+    ["DisableCAD", "DWORD", "0", "Require Ctrl+Alt+Del for sign-in", "0 = require Ctrl+Alt+Del (security best practice)."],
+    ["DontDisplayLastUserName", "DWORD", "1", "Don't display last signed-in user", "1 = hide last user name on lock screen."],
+    ["LegalNoticeCaption", "String", "Authorized Use Only", "Logon banner caption", "REG_SZ. Title shown before sign-in."],
+    ["LegalNoticeText", "String", "By signing in you accept the acceptable-use policy.", "Logon banner text", "REG_SZ. Body shown before sign-in."],
+    ["InactivityTimeoutSecs", "DWORD", "900", "Machine inactivity lock (sec)", "Seconds of inactivity before lock (900 = 15 min)."],
+  ],
+);
+
+const LSA_PATH = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa";
+const lsaEntries = bulk(
+  { category: "LSA", prefix: "lsa", path: LSA_PATH, supportedOn: "Windows 7+ / Server 2008 R2+" },
+  [
+    ["NoLMHash", "DWORD", "1", "Don't store LM hash", "1 = do not store LM hash on next password change."],
+    ["LmCompatibilityLevel", "DWORD", "5", "LM compatibility level", "5 = NTLMv2 only; refuse LM and NTLM (recommended)."],
+    ["RestrictAnonymous", "DWORD", "1", "Restrict anonymous SAM/share enumeration", "1 = restrict anonymous enumeration of SAM accounts and shares."],
+    ["RestrictAnonymousSAM", "DWORD", "1", "Restrict anonymous SAM enumeration", "1 = block anonymous SAM enumeration."],
+    ["EveryoneIncludesAnonymous", "DWORD", "0", "Anonymous not in Everyone", "0 = Anonymous SID is NOT a member of Everyone."],
+    ["RunAsPPL", "DWORD", "1", "LSASS as protected process", "1 = LSASS runs as PPL (mitigates Mimikatz)."],
+    ["DisableDomainCreds", "DWORD", "1", "Don't cache domain creds", "1 = no cached/stored network credentials."],
+    ["UseMachineId", "DWORD", "1", "Use machine identity for NTLM/Kerberos", "1 = use machine SID instead of impersonated user identity."],
+  ],
+);
+
+const NTLM_MSV_PATH = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0";
+const ntlmEntries = bulk(
+  { category: "NTLM", prefix: "ntlm", path: NTLM_MSV_PATH, supportedOn: "Windows 7+ / Server 2008 R2+" },
+  [
+    ["NtlmMinClientSec", "DWORD", "537395200", "NTLM client min session security", "0x20080000 = require NTLMv2 + 128-bit encryption."],
+    ["NtlmMinServerSec", "DWORD", "537395200", "NTLM server min session security", "0x20080000 = require NTLMv2 + 128-bit encryption."],
+    ["RestrictReceivingNTLMTraffic", "DWORD", "2", "Restrict incoming NTLM", "0 = allow all, 1 = audit, 2 = deny all."],
+    ["RestrictSendingNTLMTraffic", "DWORD", "2", "Restrict outgoing NTLM", "0 = allow all, 1 = audit, 2 = deny all."],
+    ["AuditReceivingNTLMTraffic", "DWORD", "2", "Audit incoming NTLM", "1 = audit domain accounts, 2 = audit all accounts."],
+  ],
+);
+
+const DG_PATH = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard";
+const credGuard = bulk(
+  { category: "Device Guard", prefix: "dg", path: DG_PATH, supportedOn: "Windows 10/11 Enterprise" },
+  [
+    ["EnableVirtualizationBasedSecurity", "DWORD", "1", "Enable VBS", "1 = enable Virtualization-Based Security (required for Credential Guard, HVCI)."],
+    ["RequirePlatformSecurityFeatures", "DWORD", "1", "Required VBS platform features", "1 = Secure Boot only, 3 = Secure Boot + DMA protection."],
+    ["LsaCfgFlags", "DWORD", "1", "Credential Guard configuration", "0 = disabled, 1 = enabled with UEFI lock (recommended), 2 = enabled without lock."],
+    ["HypervisorEnforcedCodeIntegrity", "DWORD", "1", "Enable HVCI", "1 = HVCI enabled with UEFI lock, 2 = enabled without lock."],
+    ["HVCIMATRequired", "DWORD", "1", "HVCI memory attribute required", "1 = require MAT-capable drivers (Windows 11)."],
+    ["ConfigureSystemGuardLaunch", "DWORD", "1", "System Guard secure launch", "1 = Unmanaged: enable secure launch on capable hardware."],
+  ],
+);
+
+// =========================================================================
+// Audit policy (Advanced Audit)
+// =========================================================================
+const AUDIT_PATH = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa";
+const auditOpts = bulk(
+  { category: "Audit", prefix: "aud", path: AUDIT_PATH, supportedOn: "Windows 7+" },
+  [
+    ["SCENoApplyLegacyAuditPolicy", "DWORD", "1", "Force Advanced Audit Policy", "1 = ignore legacy audit policy in favor of advanced subcategories (recommended)."],
+    ["CrashOnAuditFail", "DWORD", "0", "Crash on audit log full", "0 = do not BSOD when security log full."],
+    ["AuditBaseObjects", "DWORD", "0", "Audit access to base system objects", "0 = do not audit (high noise)."],
+    ["FullPrivilegeAuditing", "DWORD", "0", "Audit use of all privileges", "0 = do not audit Backup/Restore privilege use (high noise)."],
+  ],
+);
+
+const EVENTLOG_SECURITY = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Security";
+const eventLogSec = bulk(
+  { category: "Audit", prefix: "evt-sec", path: EVENTLOG_SECURITY, supportedOn: "Windows 7+" },
+  [
+    ["MaxSize", "DWORD", "196608", "Security event log max size (KB)", "192 MB recommended for security log."],
+    ["Retention", "DWORD", "0", "Security log retention", "0 = overwrite as needed (recommended; archive externally)."],
+    ["AutoBackupLogFiles", "DWORD", "0", "Auto-backup security log", "0 = no auto-backup (use SIEM)."],
+  ],
+);
+
+// =========================================================================
+// Windows: PowerShell, WinRM, BITS, WinHTTP
+// =========================================================================
+const PS_LOG_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell";
+const psLogging = bulk(
+  { category: "PowerShell", prefix: "ps", path: PS_LOG_PATH, supportedOn: "Windows 7+ / PowerShell 5.0+" },
+  [
+    ["EnableTranscripting", "DWORD", "1", "Enable PowerShell transcription", "1 = log every PowerShell session to a transcript file."],
+    ["OutputDirectory", "String", "C:\\PSTranscripts", "Transcript output directory", "REG_SZ path. Must be writable by users."],
+    ["EnableInvocationHeader", "DWORD", "1", "Include invocation header in transcripts", "1 = add timestamp/user header to each transcript."],
+    ["EnableModuleLogging", "DWORD", "1", "Enable module logging", "1 = log pipeline execution events for configured modules."],
+    ["EnableScriptBlockLogging", "DWORD", "1", "Enable script block logging", "1 = log all PowerShell script blocks (event 4104)."],
+    ["EnableScriptBlockInvocationLogging", "DWORD", "0", "Script block invocation logging", "0 = log block contents only (recommended; invocation is high-volume)."],
+  ],
+);
+
+const PS_MODULE_NAMES_PATH = `${PS_LOG_PATH}\\ModuleLogging\\ModuleNames`;
+const psModuleNames = bulk(
+  { category: "PowerShell", prefix: "ps-mod", path: PS_MODULE_NAMES_PATH, supportedOn: "Windows 7+ / PowerShell 5.0+" },
+  [
+    ["*", "String", "*", "Log all PowerShell modules", "REG_SZ. '*' = log every module's pipeline execution."],
+  ],
+);
+
+const PS_EXEC_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell";
+const psExecPolicy = bulk(
+  { category: "PowerShell", prefix: "ps-exec", path: PS_EXEC_PATH, supportedOn: "PowerShell 5.0+" },
+  [
+    ["EnableScripts", "DWORD", "1", "Turn on script execution", "1 = enforce ExecutionPolicy."],
+    ["ExecutionPolicy", "String", "AllSigned", "Execution policy", "REG_SZ. AllSigned recommended in managed environments. RemoteSigned acceptable."],
+  ],
+);
+
+const WINRM_SERVICE_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service";
+const winrmService = bulk(
+  { category: "WinRM", prefix: "winrm-s", path: WINRM_SERVICE_PATH, supportedOn: "Windows 7+ / WS-Mgmt 3.0+" },
+  [
+    ["AllowAutoConfig", "DWORD", "0", "Disable WinRM auto-config", "0 = WinRM listener requires manual configuration."],
+    ["AllowBasic", "DWORD", "0", "Disable Basic auth (server)", "0 = WinRM service rejects Basic auth."],
+    ["AllowUnencryptedTraffic", "DWORD", "0", "Require encrypted WinRM", "0 = WinRM requires HTTPS or message-level encryption."],
+    ["DisableRunAs", "DWORD", "1", "Disable RunAs in WinRM", "1 = block stored RunAs credentials."],
+    ["IPv4Filter", "String", "10.0.0.0-10.255.255.255", "WinRM IPv4 listener filter", "REG_SZ. Restrict listener to internal subnets."],
+  ],
+);
+
+const WINRM_CLIENT_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client";
+const winrmClient = bulk(
+  { category: "WinRM", prefix: "winrm-c", path: WINRM_CLIENT_PATH, supportedOn: "Windows 7+" },
+  [
+    ["AllowBasic", "DWORD", "0", "Disable Basic auth (client)", "0 = WinRM client refuses Basic auth."],
+    ["AllowUnencryptedTraffic", "DWORD", "0", "Require encrypted WinRM (client)", "0 = WinRM client requires encryption."],
+    ["TrustedHosts", "String", "", "WinRM client TrustedHosts", "REG_SZ. Comma list of trusted hosts; '*' = any (insecure)."],
+  ],
+);
+
+const BITS_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\BITS";
+const bitsEntries = bulk(
+  { category: "Network", prefix: "bits", path: BITS_PATH, supportedOn: "Windows 7+" },
+  [
+    ["JobInactivityTimeout", "DWORD", "90", "BITS job inactivity timeout (days)", "Days a stalled BITS job may sit before being deleted (default 90)."],
+    ["MaxBandwidthValidFrom", "DWORD", "8", "BITS bandwidth limit start hour", "0-23. Hour at which throttle window starts."],
+    ["MaxBandwidthValidTo", "DWORD", "17", "BITS bandwidth limit end hour", "0-23. Hour at which throttle window ends."],
+    ["EnableBITSMaxBandwidth", "DWORD", "1", "Enable BITS bandwidth throttling", "1 = enforce MaxTransferRateOnSchedule during the window."],
+    ["MaxTransferRateOnSchedule", "DWORD", "256", "BITS max kbps on schedule", "Kbps cap during the throttle window."],
+  ],
+);
+
+// =========================================================================
+// Microsoft Store, Search, Cortana, Telemetry
+// =========================================================================
+const STORE_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore";
+const storeEntries = bulk(
+  { category: "Microsoft Store", prefix: "store", path: STORE_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["RequirePrivateStoreOnly", "DWORD", "1", "Show only private store", "1 = hide public Store, only show private/company store."],
+    ["DisableStoreApps", "DWORD", "0", "Disable Store apps", "1 = block all Store apps from running."],
+    ["RemoveWindowsStore", "DWORD", "0", "Remove Microsoft Store", "1 = hide Store from Start (apps still installable via MDM)."],
+    ["AutoDownload", "DWORD", "4", "Auto-update Store apps", "2 = disable auto-update, 4 = enable auto-update."],
+    ["DisableOSUpgrade", "DWORD", "1", "Disable OS upgrade through Store", "1 = block OS upgrades initiated from Store."],
+  ],
+);
+
+const SEARCH_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search";
+const searchEntries = bulk(
+  { category: "Search", prefix: "srch", path: SEARCH_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["AllowCortana", "DWORD", "0", "Disable Cortana", "0 = Cortana disabled."],
+    ["AllowCortanaAboveLock", "DWORD", "0", "Disable Cortana on lock screen", "0 = no Cortana access from lock screen."],
+    ["AllowSearchToUseLocation", "DWORD", "0", "Don't use location in search", "0 = Windows Search will not use location."],
+    ["ConnectedSearchUseWeb", "DWORD", "0", "Disable web results in search", "0 = don't query Bing for Start search."],
+    ["DisableWebSearch", "DWORD", "1", "Disable web search", "1 = Start search returns local results only."],
+    ["AllowCloudSearch", "DWORD", "0", "Disable cloud content in search", "0 = no Microsoft 365 cloud content in search."],
+    ["AllowIndexingEncryptedStoresOrItems", "DWORD", "0", "Don't index encrypted items", "0 = skip indexing of EFS-encrypted files."],
+    ["DisableSearchBoxSuggestions", "DWORD", "1", "Disable taskbar search suggestions", "1 = hide web suggestions in taskbar search box."],
+  ],
+);
+
+const COLLECT_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection";
+const telemetryEntries = bulk(
+  { category: "Privacy", prefix: "tel", path: COLLECT_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["AllowTelemetry", "DWORD", "1", "Telemetry level", "0 = Security (Enterprise/Edu only), 1 = Required, 3 = Optional."],
+    ["LimitEnhancedDiagnosticDataWindowsAnalytics", "DWORD", "1", "Limit enhanced diagnostic data", "1 = limit data sent for Windows Analytics."],
+    ["DoNotShowFeedbackNotifications", "DWORD", "1", "Hide feedback notifications", "1 = no feedback hub notifications."],
+    ["DisableEnterpriseAuthProxy", "DWORD", "1", "Disable enterprise auth proxy for telemetry", "1 = use machine credentials for diagnostic data uploads."],
+    ["DisableOneSettingsDownloads", "DWORD", "0", "OneSettings downloads", "0 = allow OneSettings downloads (needed for cloud configuration)."],
+    ["AllowDeviceNameInTelemetry", "DWORD", "0", "Don't send device name in telemetry", "0 = device name not sent."],
+    ["MicrosoftEdgeDataOptIn", "DWORD", "0", "Edge browsing data in telemetry", "0 = don't include Edge browsing data."],
+    ["DisableDiagnosticDataViewer", "DWORD", "0", "Diagnostic Data Viewer", "0 = allow users to inspect diagnostic data sent."],
+  ],
+);
+
+// =========================================================================
+// SMB / Network shares
+// =========================================================================
+const SMB_SERVER_PATH = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters";
+const smbServer = bulk(
+  { category: "Network", prefix: "smb-s", path: SMB_SERVER_PATH, supportedOn: "Windows 7+ / Server 2008 R2+" },
+  [
+    ["SMB1", "DWORD", "0", "Disable SMBv1 (server)", "0 = SMBv1 server disabled (security)."],
+    ["RequireSecuritySignature", "DWORD", "1", "Require SMB signing (server)", "1 = require SMB signing on the server."],
+    ["EnableSecuritySignature", "DWORD", "1", "Enable SMB signing (server)", "1 = enable SMB signing if client supports it."],
+    ["RestrictNullSessAccess", "DWORD", "1", "Restrict null session access", "1 = block anonymous access to shares."],
+    ["NullSessionShares", "MultiString", "", "Null session shares allowlist", "REG_MULTI_SZ. Empty = no shares accessible by null session."],
+    ["NullSessionPipes", "MultiString", "", "Null session pipes allowlist", "REG_MULTI_SZ. Empty = no named pipes via null session."],
+    ["AutoShareWks", "DWORD", "0", "Disable admin shares (workstation)", "0 = no automatic admin shares (C$, ADMIN$) on workstations."],
+    ["EncryptData", "DWORD", "1", "Encrypt SMB traffic (server)", "1 = require SMB encryption."],
+    ["RejectUnencryptedAccess", "DWORD", "1", "Reject unencrypted SMB access", "1 = refuse non-encrypted client access when EncryptData is on."],
+  ],
+);
+
+const SMB_CLIENT_PATH = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters";
+const smbClient = bulk(
+  { category: "Network", prefix: "smb-c", path: SMB_CLIENT_PATH, supportedOn: "Windows 7+" },
+  [
+    ["AllowInsecureGuestAuth", "DWORD", "0", "Block insecure guest auth", "0 = SMB client refuses guest fallback (security)."],
+    ["RequireSecuritySignature", "DWORD", "1", "Require SMB signing (client)", "1 = require SMB signing on the client."],
+    ["EnableSecuritySignature", "DWORD", "1", "Enable SMB signing (client)", "1 = enable SMB signing if server supports it."],
+    ["EnablePlainTextPassword", "DWORD", "0", "Disable plaintext SMB passwords", "0 = never send plaintext passwords to SMB servers."],
+    ["EnableSMBQUIC", "DWORD", "0", "Disable SMB-over-QUIC client", "0 = client will not use SMB-over-QUIC (Windows 11/Server 2022)."],
+  ],
+);
+
+// =========================================================================
+// Removable storage / Printers
+// =========================================================================
+const USB_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\RemovableStorageDevices";
+const USB_CDROM_PATH = `${USB_PATH}\\{53F56308-B6BF-11D0-94F2-00A0C91EFB8B}`;
+const USB_DISK_PATH = `${USB_PATH}\\{53F56307-B6BF-11D0-94F2-00A0C91EFB8B}`;
+const usbEntries = [
+  ...bulk(
+    { category: "Removable Storage", prefix: "usb", path: USB_PATH, supportedOn: "Windows 7+" },
+    [
+      ["Deny_All", "DWORD", "1", "Deny all removable storage classes", "1 = block all removable storage device classes."],
+    ],
+  ),
+  ...bulk(
+    { category: "Removable Storage", prefix: "usb-disk", path: USB_DISK_PATH, supportedOn: "Windows 7+" },
+    [
+      ["Deny_Read", "DWORD", "1", "Block reads from removable disks", "1 = deny read access to removable disks."],
+      ["Deny_Write", "DWORD", "1", "Block writes to removable disks", "1 = deny write access to removable disks."],
+      ["Deny_Execute", "DWORD", "1", "Block execute from removable disks", "1 = deny execute permission on removable disks."],
+    ],
+  ),
+  ...bulk(
+    { category: "Removable Storage", prefix: "usb-cd", path: USB_CDROM_PATH, supportedOn: "Windows 7+" },
+    [
+      ["Deny_Read", "DWORD", "1", "Block reads from CD/DVD drives", "1 = deny read access to optical drives."],
+      ["Deny_Write", "DWORD", "1", "Block writes to CD/DVD drives", "1 = deny write access to optical drives."],
+    ],
+  ),
+];
+
+const PRINT_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers";
+const PRINT_DRIVER_PATH = `${PRINT_PATH}\\PointAndPrint`;
+const printEntries = [
+  ...bulk(
+    { category: "Printers", prefix: "print", path: PRINT_PATH, supportedOn: "Windows 7+" },
+    [
+      ["RegisterSpoolerRemoteRpcEndPoint", "DWORD", "2", "Disable inbound print RPC", "2 = disable RPC over named pipes for print spooler (PrintNightmare mitigation)."],
+      ["RpcUseNamedPipeProtocol", "DWORD", "0", "Disable named pipe RPC for spooler", "0 = require RPC over TCP."],
+      ["RpcAuthnLevelPrivacyEnabled", "DWORD", "1", "Require RPC privacy for spooler", "1 = enforce RPC privacy auth on print spooler."],
+    ],
+  ),
+  ...bulk(
+    { category: "Printers", prefix: "print-pp", path: PRINT_DRIVER_PATH, supportedOn: "Windows 7+" },
+    [
+      ["NoWarningNoElevationOnInstall", "DWORD", "0", "Require elevation for driver install", "0 = require elevation for new driver install (PrintNightmare mitigation)."],
+      ["UpdatePromptSettings", "DWORD", "0", "Require elevation for driver update", "0 = require elevation for driver updates."],
+      ["RestrictDriverInstallationToAdministrators", "DWORD", "1", "Restrict driver install to admins", "1 = only Administrators may install printer drivers (recommended)."],
+      ["TrustedServers", "DWORD", "1", "Restrict to trusted print servers", "1 = only allow Point and Print to trusted servers."],
+      ["ServerList", "String", "print01.contoso.com;print02.contoso.com", "Trusted print server list", "REG_SZ semicolon list of trusted print server FQDNs."],
+    ],
+  ),
+];
+
+// =========================================================================
+// Internet Explorer hardening (still applies to IE Mode + legacy)
+// =========================================================================
+const IE_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer";
+const IE_MAIN_PATH = `${IE_PATH}\\Main`;
+const IE_RESTR_PATH = `${IE_PATH}\\Restrictions`;
+const ieEntriesExtra = [
+  ...bulk(
+    { category: "Internet Explorer", prefix: "ie", path: IE_PATH, supportedOn: "Windows 7+" },
+    [
+      ["DisableFirstRunCustomize", "DWORD", "1", "Disable first-run customize", "1 = skip IE first-run wizard."],
+      ["DisableSearchProviderChange", "DWORD", "1", "Lock search provider", "1 = users cannot change search providers."],
+    ],
+  ),
+  ...bulk(
+    { category: "Internet Explorer", prefix: "ie-main", path: IE_MAIN_PATH, supportedOn: "Windows 7+" },
+    [
+      ["DisableFirstRunCustomize", "DWORD", "1", "Disable first-run customize (Main)", "1 = bypass first-run page."],
+      ["NoProtectedModeBanner", "DWORD", "1", "Hide protected mode banner", "1 = hide IE protected mode banner."],
+    ],
+  ),
+  ...bulk(
+    { category: "Internet Explorer", prefix: "ie-rest", path: IE_RESTR_PATH, supportedOn: "Windows 7+" },
+    [
+      ["NoBrowserOptions", "DWORD", "1", "Hide Internet Options", "1 = users cannot open Internet Options dialog."],
+      ["NoBrowserContextMenu", "DWORD", "1", "Disable IE right-click menu", "1 = disable browser context menu."],
+    ],
+  ),
+];
+
+// =========================================================================
+// RDP / Terminal Services hardening
+// =========================================================================
+const TS_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services";
+const rdpExtra = bulk(
+  { category: "Remote Desktop", prefix: "rdp2", path: TS_PATH, supportedOn: "Windows 7+ / Server 2008 R2+" },
+  [
+    ["fDenyTSConnections", "DWORD", "0", "Allow Remote Desktop", "0 = allow RDP connections."],
+    ["UserAuthentication", "DWORD", "1", "Require Network Level Authentication", "1 = require NLA before session is established."],
+    ["MinEncryptionLevel", "DWORD", "3", "RDP encryption level", "3 = High (128-bit encryption required)."],
+    ["SecurityLayer", "DWORD", "2", "RDP security layer", "2 = SSL/TLS 1.0+ required (recommended)."],
+    ["fPromptForPassword", "DWORD", "1", "Always prompt for password", "1 = always prompt at connection."],
+    ["MaxIdleTime", "DWORD", "1800000", "Idle session timeout (ms)", "1800000 ms = 30 minutes."],
+    ["MaxDisconnectionTime", "DWORD", "1800000", "Disconnected session timeout (ms)", "Time before a disconnected session is logged off."],
+    ["fResetBroken", "DWORD", "1", "Reset broken connections", "1 = end broken sessions."],
+    ["MaxInstanceCount", "DWORD", "0", "Max concurrent sessions per user", "0 = unlimited; set 1 to limit to 1 session."],
+    ["fSingleSessionPerUser", "DWORD", "1", "One session per user", "1 = restrict each user to a single session."],
+    ["AuthenticationLevel", "DWORD", "1", "Server auth level (client)", "1 = warn on auth failure, 2 = require server auth."],
+    ["fDisableForcibleLogoff", "DWORD", "0", "Allow forcible logoff", "0 = admins may force logoff RDP sessions."],
+    ["fDisableClip", "DWORD", "1", "Disable RDP clipboard", "1 = disable clipboard redirection."],
+    ["fDisableCdm", "DWORD", "1", "Disable RDP drive redirection", "1 = block local drive mapping into RDP session."],
+    ["fDisablePNPRedir", "DWORD", "1", "Disable RDP PnP device redirection", "1 = block PnP device redirection."],
+    ["fDisablePrinterRedirection", "DWORD", "1", "Disable RDP printer redirection", "1 = no printer redirection."],
+    ["fDisableLPT", "DWORD", "1", "Disable RDP LPT redirection", "1 = no LPT port redirection."],
+    ["fDisableCcm", "DWORD", "1", "Disable RDP COM port redirection", "1 = no COM port redirection."],
+    ["LoggingEnabled", "DWORD", "1", "Enable RDP gateway logging", "1 = log RD Gateway connections."],
+  ],
+);
+
+// =========================================================================
+// Firewall — additional policies
+// =========================================================================
+const FW_BASE = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall";
+const fwProfiles = ["DomainProfile", "PrivateProfile", "PublicProfile"].flatMap((profile) =>
+  bulk(
+    {
+      category: "Firewall",
+      prefix: `fw-${slug(profile)}`,
+      path: `${FW_BASE}\\${profile}`,
+      supportedOn: "Windows 7+",
+    },
+    [
+      ["EnableFirewall", "DWORD", "1", `${profile}: Enable firewall`, "1 = firewall enabled for this profile."],
+      ["DefaultInboundAction", "DWORD", "1", `${profile}: Default inbound action`, "0 = allow, 1 = block (recommended)."],
+      ["DefaultOutboundAction", "DWORD", "0", `${profile}: Default outbound action`, "0 = allow, 1 = block."],
+      ["DisableNotifications", "DWORD", "1", `${profile}: Suppress firewall notifications`, "1 = hide firewall toast notifications."],
+      ["DisableUnicastResponsesToMulticastBroadcast", "DWORD", "1", `${profile}: Block unicast response to multicast`, "1 = drop unicast replies to broadcast/multicast (security)."],
+      ["AllowLocalPolicyMerge", "DWORD", "0", `${profile}: Block local rule merge`, "0 = ignore locally created firewall rules."],
+      ["AllowLocalIPsecPolicyMerge", "DWORD", "0", `${profile}: Block local IPsec merge`, "0 = ignore locally created IPsec rules."],
+    ],
+  ),
+);
+
+const fwLogging = ["DomainProfile", "PrivateProfile", "PublicProfile"].flatMap((profile) =>
+  bulk(
+    {
+      category: "Firewall",
+      prefix: `fw-log-${slug(profile)}`,
+      path: `${FW_BASE}\\${profile}\\Logging`,
+      supportedOn: "Windows 7+",
+    },
+    [
+      ["LogDroppedPackets", "DWORD", "1", `${profile}: Log dropped packets`, "1 = log dropped packets to firewall log."],
+      ["LogSuccessfulConnections", "DWORD", "0", `${profile}: Log successful connections`, "0 = do not log successful (high volume)."],
+      ["LogFileSize", "DWORD", "16384", `${profile}: Firewall log size (KB)`, "16384 KB = 16 MB."],
+      ["LogFilePath", "String", "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log", `${profile}: Firewall log path`, "REG_SZ. Path to firewall log file."],
+    ],
+  ),
+);
+
+// =========================================================================
+// BitLocker — additional policies
+// =========================================================================
+const BL_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE";
+const bitlockerExtra = bulk(
+  { category: "BitLocker", prefix: "bl2", path: BL_PATH, supportedOn: "Windows 7 Ultimate+ / 10/11 Pro+" },
+  [
+    ["EncryptionMethod", "DWORD", "4", "Encryption method (legacy)", "1 = AES-128 + diffuser, 2 = AES-256 + diffuser, 3 = AES-128, 4 = AES-256."],
+    ["EncryptionMethodWithXtsOs", "DWORD", "7", "OS drive encryption method", "6 = XTS-AES 128-bit, 7 = XTS-AES 256-bit (recommended)."],
+    ["EncryptionMethodWithXtsFdv", "DWORD", "7", "Fixed-drive encryption method", "6 = XTS-AES 128-bit, 7 = XTS-AES 256-bit."],
+    ["EncryptionMethodWithXtsRdv", "DWORD", "4", "Removable-drive encryption method", "3 = AES-CBC 128, 4 = AES-CBC 256, 6 = XTS-AES 128, 7 = XTS-AES 256."],
+    ["UseAdvancedStartup", "DWORD", "1", "Allow advanced startup options", "1 = enable PIN, USB key, or PIN+USB at boot."],
+    ["UseTPMPIN", "DWORD", "2", "Configure TPM+PIN", "0 = disallow, 1 = allow, 2 = require TPM+PIN."],
+    ["MinimumPIN", "DWORD", "8", "Minimum PIN length", "Recommended >= 8 characters."],
+    ["UsePIN", "DWORD", "0", "Configure TPM-only", "0 = disallow TPM-only (require PIN)."],
+    ["EnableNonTPM", "DWORD", "0", "Block BitLocker on non-TPM systems", "0 = require TPM (don't allow USB-key only)."],
+    ["OSRecovery", "DWORD", "1", "OS drive recovery options", "1 = enable recovery options including AAD/AD backup."],
+    ["OSManageDRA", "DWORD", "1", "Allow data recovery agent (OS)", "1 = allow DRA on OS drive."],
+    ["OSRecoveryPassword", "DWORD", "2", "Require 48-digit recovery password", "2 = require 48-digit recovery password."],
+    ["OSRecoveryKey", "DWORD", "2", "Require 256-bit recovery key", "0 = disallow, 1 = allow, 2 = require."],
+    ["OSHideRecoveryPage", "DWORD", "0", "Show recovery options to user", "0 = show recovery information to user (recommended)."],
+    ["OSActiveDirectoryBackup", "DWORD", "1", "Backup OS drive recovery to AD/AAD", "1 = save recovery info to Active Directory / Azure AD."],
+    ["OSRequireActiveDirectoryBackup", "DWORD", "1", "Require AD/AAD backup before encryption", "1 = block encryption until AD/AAD backup succeeds."],
+    ["OSActiveDirectoryInfoToStore", "DWORD", "1", "Info stored in AD/AAD", "1 = backup recovery password and key package."],
+    ["IdentificationField", "String", "CONTOSO", "BitLocker identification field", "REG_SZ used for managed BitLocker drives."],
+    ["IdentificationFieldString", "String", "Contoso Corp", "BitLocker org identification", "REG_SZ identifier shown on BitLocker prompts."],
+    ["RDVAllowBDE", "DWORD", "1", "Allow BitLocker on removable drives", "1 = allow BitLocker To Go."],
+    ["RDVDenyWriteAccess", "DWORD", "1", "Deny write access to non-BL removable drives", "1 = removable drives must be BitLocker-encrypted to be writable."],
+  ],
+);
+
+// =========================================================================
+// Windows: AutoPlay, Power, Hello, AppLocker — additions
+// =========================================================================
+const HELLO_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\PassportForWork";
+const helloExtra = bulk(
+  { category: "Windows Hello", prefix: "hello2", path: HELLO_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["Enabled", "DWORD", "1", "Enable Windows Hello for Business", "1 = enable Hello for Business provisioning."],
+    ["UsePassportForWork", "DWORD", "1", "Use Hello for Business", "1 = enable Hello for Business."],
+    ["RequireSecurityDevice", "DWORD", "1", "Require TPM for Hello", "1 = require TPM (recommended)."],
+    ["EnablePinRecovery", "DWORD", "1", "Enable PIN recovery", "1 = users can reset PIN with Microsoft account."],
+    ["UseHelloCertificateForOnPremAuth", "DWORD", "1", "Use Hello cert for on-prem auth", "1 = use cert-based on-prem auth."],
+  ],
+);
+const HELLO_PIN_PATH = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\PassportForWork\\PINComplexity";
+const helloPin = bulk(
+  { category: "Windows Hello", prefix: "hello-pin", path: HELLO_PIN_PATH, supportedOn: "Windows 10/11" },
+  [
+    ["Digits", "DWORD", "1", "PIN: digits required", "0 = blocked, 1 = allowed, 2 = required."],
+    ["LowercaseLetters", "DWORD", "0", "PIN: lowercase letters", "0 = blocked, 1 = allowed, 2 = required."],
+    ["UppercaseLetters", "DWORD", "0", "PIN: uppercase letters", "0 = blocked, 1 = allowed, 2 = required."],
+    ["SpecialCharacters", "DWORD", "0", "PIN: special characters", "0 = blocked, 1 = allowed, 2 = required."],
+    ["MinimumPINLength", "DWORD", "6", "PIN: minimum length", "Minimum number of characters."],
+    ["MaximumPINLength", "DWORD", "127", "PIN: maximum length", "Maximum length of PIN."],
+    ["Expiration", "DWORD", "0", "PIN: expiration days", "0 = never expire (PIN is local; expiry not generally needed)."],
+    ["History", "DWORD", "0", "PIN: history count", "Previous PINs remembered (0 = none)."],
+  ],
+);
+
+// =========================================================================
+// Final aggregated export
+// =========================================================================
+
+export const bulkGpoMappings: GpoMapping[] = [
+  ...edgeExtra,
+  ...chromeExtra,
+  ...defenderCore,
+  ...defenderScan,
+  ...defenderRT,
+  ...defenderCloud,
+  ...defenderNIS,
+  ...defenderASR,
+  ...defenderNetProt,
+  ...defenderCFA,
+  ...officeMacro,
+  ...officeOutlookExtra,
+  ...officeCommonExtra,
+  ...officeCommonHKLM,
+  ...wuExtra,
+  ...wuAuExtra,
+  ...tlsProtocols,
+  ...tls12Enable,
+  ...uacEntries,
+  ...lsaEntries,
+  ...ntlmEntries,
+  ...credGuard,
+  ...auditOpts,
+  ...eventLogSec,
+  ...psLogging,
+  ...psModuleNames,
+  ...psExecPolicy,
+  ...winrmService,
+  ...winrmClient,
+  ...bitsEntries,
+  ...storeEntries,
+  ...searchEntries,
+  ...telemetryEntries,
+  ...smbServer,
+  ...smbClient,
+  ...usbEntries,
+  ...printEntries,
+  ...ieEntriesExtra,
+  ...rdpExtra,
+  ...fwProfiles,
+  ...fwLogging,
+  ...bitlockerExtra,
+  ...helloExtra,
+  ...helloPin,
+];
