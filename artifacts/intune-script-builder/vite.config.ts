@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const DEFAULT_PRODUCTION_BASE_PATH = "/MikkelsenBrenno.Powershell.Github.io/";
+const DEFAULT_PRODUCTION_BASE_PATH = "/PowershellTrainer/";
 
 export default defineConfig(async ({ command }) => {
   const isServe = command === "serve";
